@@ -18,6 +18,7 @@ class SetTelegramCommandsCommand extends Command
             ['command' => 'connect', 'description' => 'подключить группу'],
             ['command' => 'disconnect', 'description' => 'отключить группу'],
             ['command' => 'settings', 'description' => 'настройки группы'],
+            ['command' => 'set_language', 'description' => 'выбрать язык перевода'],
             ['command' => 'my', 'description' => 'моя статистика за сегодня'],
             ['command' => 'my_week', 'description' => 'моя статистика за неделю'],
             ['command' => 'stats', 'description' => 'статистика группы за сегодня'],

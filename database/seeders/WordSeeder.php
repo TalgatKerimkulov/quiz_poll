@@ -17,16 +17,38 @@ class WordSeeder extends Seeder
         );
 
         foreach ($words as $word) {
-            Word::updateOrCreate(
-                ['word_en' => $word[0], 'translation_ru' => $word[1]],
+            $model = Word::updateOrCreate(
                 [
+                    'source' => 'seed',
+                    'source_key' => hash('sha256', implode('|', [$word[0], $word[1], $word[2]])),
+                ],
+                [
+                    'term' => $word[0],
+                    'locale' => 'en',
                     'level' => $word[2],
                     'part_of_speech' => $word[3] ?? null,
-                    'example_en' => $word[4] ?? null,
-                    'example_ru' => $word[5] ?? null,
                     'is_active' => true,
                 ],
             );
+            $model->translations()->updateOrCreate(
+                ['locale' => 'ru'],
+                [
+                    'text' => $word[1],
+                    'status' => 'reviewed',
+                    'source' => 'seed',
+                    'reviewed_at' => now(),
+                ],
+            );
+            if (isset($word[4])) {
+                $model->examples()->updateOrCreate(
+                    ['locale' => 'en', 'text' => $word[4]],
+                    [
+                        'translation_locale' => isset($word[5]) ? 'ru' : null,
+                        'translation_text' => $word[5] ?? null,
+                        'source' => 'seed',
+                    ],
+                );
+            }
         }
     }
 

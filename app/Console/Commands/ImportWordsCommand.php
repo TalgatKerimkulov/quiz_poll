@@ -2,53 +2,43 @@
 
 namespace App\Console\Commands;
 
-use App\Services\Telegram\WordManagementService;
+use App\Services\Words\EnglishProfileImporter;
 use Illuminate\Console\Command;
 use Throwable;
 
 class ImportWordsCommand extends Command
 {
-    protected $signature = 'words:import {path : CSV path}';
+    protected $signature = 'words:import
+        {path=public : English Profile CSV file or directory}
+        {--dry-run : Parse and validate without writing}
+        {--include-all : Include the aggregate All file when importing a directory}';
 
-    protected $description = 'Import words from CSV.';
+    protected $description = 'Import multilingual words from English Profile semicolon CSV files.';
 
-    public function handle(WordManagementService $words): int
+    public function handle(EnglishProfileImporter $importer): int
     {
-        $path = (string) $this->argument('path');
-        if (! is_file($path)) {
-            $this->error("File not found: {$path}");
+        try {
+            $result = $importer->import(
+                (string) $this->argument('path'),
+                (bool) $this->option('dry-run'),
+                (bool) $this->option('include-all'),
+            );
+        } catch (Throwable $exception) {
+            $this->error($exception->getMessage());
+
             return self::FAILURE;
         }
 
-        $handle = fopen($path, 'r');
-        $header = fgetcsv($handle);
-        $imported = $skipped = $failed = 0;
-
-        while (($row = fgetcsv($handle)) !== false) {
-            $data = array_combine($header, $row);
-            if (! $data) {
-                $failed++;
-                continue;
-            }
-
-            try {
-                $before = \App\Models\Word::where('word_en', mb_strtolower(trim($data['word_en'] ?? '')))
-                    ->where('translation_ru', trim($data['translation_ru'] ?? ''))
-                    ->exists();
-                $word = $words->add($data['word_en'] ?? '', $data['translation_ru'] ?? '', $data['level'] ?? null);
-                $word->update([
-                    'part_of_speech' => $data['part_of_speech'] ?? null,
-                    'example_en' => $data['example_en'] ?? null,
-                    'example_ru' => $data['example_ru'] ?? null,
-                ]);
-                $before ? $skipped++ : $imported++;
-            } catch (Throwable) {
-                $failed++;
-            }
+        $this->table(
+            ['Files', 'Rows', 'Words', 'Translations', 'Examples', 'Skipped'],
+            [[
+                $result['files'], $result['rows'], $result['words'],
+                $result['translations'], $result['examples'], $result['skipped'],
+            ]],
+        );
+        if ($this->option('dry-run')) {
+            $this->comment('Dry run: database was not changed.');
         }
-        fclose($handle);
-
-        $this->info("Imported: {$imported}; skipped: {$skipped}; failed: {$failed}");
 
         return self::SUCCESS;
     }

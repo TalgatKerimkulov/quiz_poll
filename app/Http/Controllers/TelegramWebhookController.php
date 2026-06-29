@@ -29,8 +29,7 @@ class TelegramWebhookController extends Controller
         protected TelegramMessageFormatter $formatter,
         protected TelegramQuizPollService $polls,
         protected WordManagementService $words,
-    ) {
-    }
+    ) {}
 
     public function __invoke(Request $request): JsonResponse
     {
@@ -42,6 +41,7 @@ class TelegramWebhookController extends Controller
         $update = $request->all();
         if (! $this->markUpdate($update)) {
             Log::info('Duplicate Telegram update skipped.', ['update_id' => $update['update_id'] ?? null]);
+
             return response()->json(['ok' => true]);
         }
 
@@ -79,6 +79,7 @@ class TelegramWebhookController extends Controller
             '/set_time' => $this->admin($message, fn () => $this->setTime($message, $args)),
             '/set_timezone' => $this->admin($message, fn () => $this->setTimezone($message, $args)),
             '/set_level' => $this->admin($message, fn () => $this->setLevel($message, $args)),
+            '/set_language' => $this->admin($message, fn () => $this->setLanguage($message, $args)),
             '/set_direction' => $this->admin($message, fn () => $this->setDirection($message, $args)),
             '/pause' => $this->admin($message, fn () => $this->pause($message, true)),
             '/resume' => $this->admin($message, fn () => $this->pause($message, false)),
@@ -102,10 +103,12 @@ class TelegramWebhookController extends Controller
         $chatId = data_get($message, 'chat.id');
         if (data_get($message, 'chat.type') === 'private') {
             $this->client->sendMessage($chatId, 'Добавьте бота в группу как администратора и выполните /connect в группе.');
+
             return;
         }
         if (! $this->chats->botCanOperate($chatId)) {
             $this->client->sendMessage($chatId, $this->formatter->botRightsMissing());
+
             return;
         }
 
@@ -130,6 +133,7 @@ class TelegramWebhookController extends Controller
         $value = (int) ($args[0] ?? 0);
         if ($value < 1 || $value > 50) {
             $this->client->sendMessage(data_get($message, 'chat.id'), $this->formatter->invalidCommand('/set_polls_per_day 15'));
+
             return;
         }
         $this->chat($message)?->ensureSettings()->update(['polls_per_day' => $value]);
@@ -140,6 +144,7 @@ class TelegramWebhookController extends Controller
     {
         if (! $this->validTime($args[0] ?? '') || ! $this->validTime($args[1] ?? '')) {
             $this->client->sendMessage(data_get($message, 'chat.id'), $this->formatter->invalidCommand('/set_time 09:00 22:00'));
+
             return;
         }
         $this->chat($message)?->ensureSettings()->update(['start_time' => $args[0], 'end_time' => $args[1]]);
@@ -151,6 +156,7 @@ class TelegramWebhookController extends Controller
         $timezone = $args[0] ?? '';
         if (! in_array($timezone, DateTimeZone::listIdentifiers(), true)) {
             $this->client->sendMessage(data_get($message, 'chat.id'), $this->formatter->invalidCommand('/set_timezone Asia/Tashkent'));
+
             return;
         }
         $this->chat($message)?->ensureSettings()->update(['timezone' => $timezone]);
@@ -160,19 +166,33 @@ class TelegramWebhookController extends Controller
     protected function setLevel(array $message, array $args): void
     {
         $level = strtoupper($args[0] ?? '');
-        if (! in_array($level, ['A1', 'A2', 'B1', 'B2', 'ALL'], true)) {
+        if (! in_array($level, [...WordManagementService::LEVELS, 'ALL'], true)) {
             $this->client->sendMessage(data_get($message, 'chat.id'), $this->formatter->invalidCommand('/set_level A1'));
+
             return;
         }
         $this->chat($message)?->ensureSettings()->update(['level' => $level === 'ALL' ? null : $level]);
         $this->client->sendMessage(data_get($message, 'chat.id'), 'Уровень: '.($level === 'ALL' ? 'все' : $level));
     }
 
+    protected function setLanguage(array $message, array $args): void
+    {
+        $locale = strtolower($args[0] ?? '');
+        if (! in_array($locale, config('telegram.locales', []), true) || $locale === 'en') {
+            $this->client->sendMessage(data_get($message, 'chat.id'), $this->formatter->invalidCommand('/set_language ru'));
+
+            return;
+        }
+        $this->chat($message)?->ensureSettings()->update(['target_locale' => $locale]);
+        $this->client->sendMessage(data_get($message, 'chat.id'), "Язык перевода: {$locale}");
+    }
+
     protected function setDirection(array $message, array $args): void
     {
         $direction = $args[0] ?? '';
-        if (! in_array($direction, ['en_ru', 'ru_en', 'mixed'], true)) {
-            $this->client->sendMessage(data_get($message, 'chat.id'), $this->formatter->invalidCommand('/set_direction en_ru'));
+        if (! in_array($direction, ['forward', 'reverse', 'mixed'], true)) {
+            $this->client->sendMessage(data_get($message, 'chat.id'), $this->formatter->invalidCommand('/set_direction forward'));
+
             return;
         }
         $this->chat($message)?->ensureSettings()->update(['direction' => $direction]);
@@ -196,11 +216,15 @@ class TelegramWebhookController extends Controller
     {
         if (count($args) < 2) {
             $this->client->sendMessage(data_get($message, 'chat.id'), $this->formatter->invalidCommand('/addword apple яблоко A1'));
+
             return;
         }
         try {
-            $word = $this->words->add($args[0], $args[1], $args[2] ?? null, data_get($message, 'from.id'), data_get($message, 'from.username'));
-            $this->client->sendMessage(data_get($message, 'chat.id'), "Слово добавлено: {$word->word_en} — {$word->translation_ru}, уровень ".($word->level ?: 'all').'.');
+            $settings = $this->chat($message)?->ensureSettings();
+            $targetLocale = $settings?->target_locale ?? 'ru';
+            $word = $this->words->add($args[0], $args[1], $args[2] ?? null, data_get($message, 'from.id'), data_get($message, 'from.username'), $targetLocale);
+            $translation = $word->translationFor($targetLocale)?->text;
+            $this->client->sendMessage(data_get($message, 'chat.id'), "Слово добавлено: {$word->term} — {$translation}, уровень ".($word->level ?: 'all').'.');
         } catch (InvalidArgumentException) {
             $this->client->sendMessage(data_get($message, 'chat.id'), $this->formatter->invalidCommand('/addword apple яблоко A1'));
         }
@@ -217,7 +241,9 @@ class TelegramWebhookController extends Controller
         $words = $this->words->find($args[0] ?? '');
         $text = $words->isEmpty()
             ? 'Слова не найдены.'
-            : $words->map(fn ($word) => "{$word->word_en} — {$word->translation_ru} ({$word->level})")->implode("\n");
+            : $words->map(fn ($word) => "{$word->term} — ".$word->translations
+                ->map(fn ($translation) => "{$translation->text} [{$translation->locale}]")
+                ->implode(', ')." ({$word->level})")->implode("\n");
         $this->client->sendMessage(data_get($message, 'chat.id'), $text);
     }
 
@@ -251,6 +277,7 @@ class TelegramWebhookController extends Controller
         if (! $this->chats->isAdmin($chatId, data_get($message, 'from.id'))) {
             Log::info('Telegram command denied: not admin.', ['chat_id' => $chatId, 'user_id' => data_get($message, 'from.id')]);
             $this->client->sendMessage($chatId, $this->formatter->notAdmin());
+
             return;
         }
         $callback();

@@ -17,6 +17,8 @@ class TelegramPoll extends Model
         'correct_option_ids',
         'status',
         'direction',
+        'source_locale',
+        'target_locale',
         'level',
         'open_period',
         'error_message',

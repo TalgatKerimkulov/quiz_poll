@@ -45,4 +45,8 @@ return [
         'poll_open_period' => env('TELEGRAM_POLL_OPEN_PERIOD', 1800),
     ],
 
+    'openai' => [
+        'key' => env('OPENAI_API_KEY'),
+    ],
+
 ];

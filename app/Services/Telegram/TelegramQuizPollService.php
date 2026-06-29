@@ -14,8 +14,7 @@ class TelegramQuizPollService
         protected TelegramBotClient $client,
         protected WordSelectionService $words,
         protected QuizOptionBuilder $options,
-    ) {
-    }
+    ) {}
 
     public function sendForChat(TelegramChat $chat, bool $ignoreTimeRange = false, bool $force = false): ?TelegramPoll
     {
@@ -42,6 +41,7 @@ class TelegramQuizPollService
 
         if (! $force && $sentToday >= $settings->polls_per_day) {
             Log::info('Telegram quiz daily limit reached.', ['chat_id' => $chat->chat_id, 'limit' => $settings->polls_per_day]);
+
             return null;
         }
 
@@ -54,7 +54,7 @@ class TelegramQuizPollService
             return null;
         }
 
-        $quiz = $this->options->build($word, $settings->direction);
+        $quiz = $this->options->build($word, $settings->direction, $settings->target_locale);
         $payload = [
             'chat_id' => (string) $chat->chat_id,
             'question' => $quiz['question'],
@@ -80,6 +80,8 @@ class TelegramQuizPollService
                 'correct_option_ids' => $quiz['correct_option_ids'],
                 'status' => $this->client->isDryRun() ? 'dry_run' : 'sent',
                 'direction' => $quiz['direction'],
+                'source_locale' => $settings->source_locale,
+                'target_locale' => $settings->target_locale,
                 'level' => $word->level,
                 'open_period' => $settings->poll_open_period,
                 'sent_at' => CarbonImmutable::now(),
@@ -100,6 +102,8 @@ class TelegramQuizPollService
                 'correct_option_ids' => $quiz['correct_option_ids'],
                 'status' => 'failed',
                 'direction' => $quiz['direction'],
+                'source_locale' => $settings->source_locale,
+                'target_locale' => $settings->target_locale,
                 'level' => $word->level,
                 'open_period' => $settings->poll_open_period,
                 'error_message' => $exception->getMessage(),

@@ -26,8 +26,9 @@ class TelegramMessageFormatter
             '/set_polls_per_day 15',
             '/set_time 09:00 22:00',
             '/set_timezone Asia/Tashkent',
-            '/set_level A1|A2|B1|B2|all',
-            '/set_direction en_ru|ru_en|mixed',
+            '/set_level A1|A2|B1|B2|C1|C2|all',
+            '/set_language ru|uz',
+            '/set_direction forward|reverse|mixed',
             '/pause - поставить на паузу',
             '/resume - снять с паузы',
             '/send_now - отправить quiz сейчас',
@@ -48,6 +49,7 @@ class TelegramMessageFormatter
             "Опросов в день: {$settings->polls_per_day}",
             "Время: {$this->time($settings->start_time)}–{$this->time($settings->end_time)}",
             'Уровень: '.($settings->level ?: 'все'),
+            "Языки: {$settings->source_locale} → {$settings->target_locale}",
             "Направление: {$settings->direction}",
             'Повтор ошибок: '.($settings->repeat_mistakes_enabled ? 'включён' : 'выключен'),
             'Пауза: '.($settings->is_paused ? 'да' : 'нет'),
@@ -86,6 +88,7 @@ class TelegramMessageFormatter
         $lines = ['Топ:', ''];
         if ($rows === []) {
             $lines[] = 'Пока нет ответов.';
+
             return implode("\n", $lines);
         }
 

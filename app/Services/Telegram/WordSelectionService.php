@@ -15,6 +15,9 @@ class WordSelectionService
     {
         $settings = $chat->ensureSettings();
         $base = Word::where('is_active', true)
+            ->where('locale', $settings->source_locale)
+            ->whereHas('translations', fn ($query) => $query->where('locale', $settings->target_locale))
+            ->with('translations')
             ->when($settings->level, fn ($query) => $query->where('level', $settings->level));
 
         $askedToday = TelegramPoll::where('chat_id', $chat->chat_id)
@@ -26,7 +29,11 @@ class WordSelectionService
             $available = $base->get();
         }
 
-        $available = $available->filter(fn (Word $word): bool => $this->hasEnoughOptions($word, $settings->direction));
+        $available = $available->filter(fn (Word $word): bool => $this->hasEnoughOptions(
+            $word,
+            $settings->direction,
+            $settings->target_locale,
+        ));
         if ($available->isEmpty()) {
             return null;
         }
@@ -74,14 +81,24 @@ class WordSelectionService
         return $words->first();
     }
 
-    protected function hasEnoughOptions(Word $word, string $direction): bool
+    protected function hasEnoughOptions(Word $word, string $direction, string $targetLocale): bool
     {
-        $column = $direction === 'ru_en' ? 'word_en' : 'translation_ru';
+        $query = Word::query()
+            ->where('words.is_active', true)
+            ->where('words.locale', $word->locale)
+            ->where('words.id', '!=', $word->id)
+            ->join('word_translations', function ($join) use ($targetLocale): void {
+                $join->on('word_translations.word_id', '=', 'words.id')
+                    ->where('word_translations.locale', $targetLocale);
+            });
 
-        return Word::where('is_active', true)
-            ->where('id', '!=', $word->id)
-            ->where($column, '!=', $word->{$column})
-            ->distinct()
-            ->count($column) >= 3;
+        $forwardReady = (clone $query)->distinct()->count('word_translations.text') >= 3;
+        $reverseReady = (clone $query)->distinct()->count('words.term') >= 3;
+
+        return match ($direction) {
+            'forward' => $forwardReady,
+            'reverse' => $reverseReady,
+            default => $forwardReady && $reverseReady,
+        };
     }
 }

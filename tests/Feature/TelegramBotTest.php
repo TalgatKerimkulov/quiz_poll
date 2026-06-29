@@ -133,7 +133,7 @@ class TelegramBotTest extends TestCase
             'type' => 'supergroup',
             'is_active' => true,
         ]);
-        $word = Word::create(['word_en' => 'apple', 'translation_ru' => 'яблоко']);
+        $word = $this->word('apple', 'яблоко');
 
         for ($i = 0; $i < 20; $i++) {
             TelegramPoll::create([
@@ -312,7 +312,7 @@ class TelegramBotTest extends TestCase
 
     protected function createPoll(array $correctOptionIds): TelegramPoll
     {
-        $word = Word::create(['word_en' => 'apple', 'translation_ru' => 'яблоко']);
+        $word = $this->word('apple', 'яблоко');
 
         return TelegramPoll::create([
             'telegram_poll_id' => 'poll-1',
@@ -334,7 +334,25 @@ class TelegramBotTest extends TestCase
             ['house', 'дом'],
             ['car', 'машина'],
         ] as [$wordEn, $translationRu]) {
-            Word::create(['word_en' => $wordEn, 'translation_ru' => $translationRu]);
+            $this->word($wordEn, $translationRu);
         }
+    }
+
+    protected function word(string $term, string $translation): Word
+    {
+        $word = Word::create([
+            'term' => $term,
+            'locale' => 'en',
+            'source' => 'test',
+            'is_active' => true,
+        ]);
+        $word->translations()->create([
+            'locale' => 'ru',
+            'text' => $translation,
+            'status' => 'reviewed',
+            'source' => 'test',
+        ]);
+
+        return $word;
     }
 }
